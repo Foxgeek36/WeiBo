@@ -1,28 +1,34 @@
+# coding=utf-8
 import json
 from scrapy import Request, Spider
 from weibo.items import *
 
 
 class WeiboSpider(Spider):
+    '''
+    抓取目标站点为:https:m.weibo.cn / 从手机端站点作为切入
+    -用户详情页示例:https://m.weibo.cn/profile/2011075080
+    '''
     name = 'weibocn'
     
     allowed_domains = ['m.weibo.cn']
-    
+    # 用户详情页中'关注'列表API /亲测实际有效
     user_url = 'https://m.weibo.cn/api/container/getIndex?uid={uid}&type=uid&value={uid}&containerid=100505{uid}'
-    
+    # 关注列表API
     follow_url = 'https://m.weibo.cn/api/container/getIndex?containerid=231051_-_followers_-_{uid}&page={page}'
-    
+    # 粉丝列表API
     fan_url = 'https://m.weibo.cn/api/container/getIndex?containerid=231051_-_fans_-_{uid}&page={page}'
-    
+    # 微博列表API
     weibo_url = 'https://m.weibo.cn/api/container/getIndex?uid={uid}&type=uid&page={page}&containerid=107603{uid}'
-    
+    # 选取几个大V,将他们的ID号赋值为一个列表/ 以此作为基础递归拓展更多的微博账号数据 +--
     start_users = ['3217179555', '1742566624', '2282991915', '1288739185', '3952070245', '5878659096']
     
     def start_requests(self):
         for uid in self.start_users:
+            # attention: 注意此处uid的对应写法
             yield Request(self.user_url.format(uid=uid), callback=self.parse_user)
     
-    def parse_user(self, response):
+    def parse_user(self, response):  # attention +--
         """
         解析用户信息
         :param response: Response对象
@@ -30,8 +36,9 @@ class WeiboSpider(Spider):
         self.logger.debug(response)
         result = json.loads(response.text)
         if result.get('data').get('userInfo'):
-            user_info = result.get('data').get('userInfo')
+            user_info = result.get('data').get('userInfo')  # 现接口字段已做更改
             user_item = UserItem()
+            # attention: 此处为字段间的映射关系 +--
             field_map = {
                 'id': 'id', 'name': 'screen_name', 'avatar': 'profile_image_url', 'cover': 'cover_image_phone',
                 'gender': 'gender', 'description': 'description', 'fans_count': 'followers_count',
@@ -40,10 +47,13 @@ class WeiboSpider(Spider):
             }
             for field, attr in field_map.items():
                 user_item[field] = user_info.get(attr)
+            # ----------------------------------
+
             yield user_item
             # 关注
             uid = user_info.get('id')
             yield Request(self.follow_url.format(uid=uid, page=1), callback=self.parse_follows,
+                          # meta在此处作为备注参数传入/ 提供给callback中函数做可能的使用
                           meta={'page': 1, 'uid': uid})
             # 粉丝
             yield Request(self.fan_url.format(uid=uid, page=1), callback=self.parse_fans,
@@ -52,34 +62,38 @@ class WeiboSpider(Spider):
             yield Request(self.weibo_url.format(uid=uid, page=1), callback=self.parse_weibos,
                           meta={'page': 1, 'uid': uid})
     
-    def parse_follows(self, response):
+    def parse_follows(self, response):  # attention +--
         """
         解析用户关注
         :param response: Response对象
         """
         result = json.loads(response.text)
-        if result.get('ok') and result.get('data').get('cards') and len(result.get('data').get('cards')) and result.get('data').get('cards')[-1].get(
-            'card_group'):
+        if result.get('ok') and result.get('data').get('cards') and \
+                len(result.get('data').get('cards')) and \
+                result.get('data').get('cards')[-1].get('card_group'):
             # 解析用户
             follows = result.get('data').get('cards')[-1].get('card_group')
             for follow in follows:
                 if follow.get('user'):
                     uid = follow.get('user').get('id')
-                    yield Request(self.user_url.format(uid=uid), callback=self.parse_user)
+                    # 递归解析 +--
+                    yield Request(self.user_url.format(uid=uid),
+                                  callback=self.parse_user)
             
             uid = response.meta.get('uid')
             # 关注列表
             user_relation_item = UserRelationItem()
-            follows = [{'id': follow.get('user').get('id'), 'name': follow.get('user').get('screen_name')} for follow in
-                       follows]
+            follows = [{'id': follow.get('user').get('id'), 'name': follow.get('user').get('screen_name')}
+                       for follow in follows]
             user_relation_item['id'] = uid
             user_relation_item['follows'] = follows
             user_relation_item['fans'] = []
             yield user_relation_item
-            # 下一页关注
+            # 下一页关注 +--
             page = response.meta.get('page') + 1
             yield Request(self.follow_url.format(uid=uid, page=page),
-                          callback=self.parse_follows, meta={'page': page, 'uid': uid})
+                          callback=self.parse_follows,
+                          meta={'page': page, 'uid': uid})
     
     def parse_fans(self, response):
         """
@@ -87,14 +101,16 @@ class WeiboSpider(Spider):
         :param response: Response对象
         """
         result = json.loads(response.text)
-        if result.get('ok') and result.get('data').get('cards') and len(result.get('data').get('cards')) and result.get('data').get('cards')[-1].get(
-            'card_group'):
+        if result.get('ok') and result.get('data').get('cards') and \
+                len(result.get('data').get('cards')) and \
+                result.get('data').get('cards')[-1].get('card_group'):
             # 解析用户
             fans = result.get('data').get('cards')[-1].get('card_group')
             for fan in fans:
                 if fan.get('user'):
                     uid = fan.get('user').get('id')
-                    yield Request(self.user_url.format(uid=uid), callback=self.parse_user)
+                    yield Request(self.user_url.format(uid=uid),
+                                  callback=self.parse_user)
             
             uid = response.meta.get('uid')
             # 粉丝列表
@@ -108,7 +124,8 @@ class WeiboSpider(Spider):
             # 下一页粉丝
             page = response.meta.get('page') + 1
             yield Request(self.fan_url.format(uid=uid, page=page),
-                          callback=self.parse_fans, meta={'page': page, 'uid': uid})
+                          callback=self.parse_fans,
+                          meta={'page': page, 'uid': uid})
     
     def parse_weibos(self, response):
         """
@@ -135,5 +152,6 @@ class WeiboSpider(Spider):
             # 下一页微博
             uid = response.meta.get('uid')
             page = response.meta.get('page') + 1
-            yield Request(self.weibo_url.format(uid=uid, page=page), callback=self.parse_weibos,
+            yield Request(self.weibo_url.format(uid=uid, page=page),
+                          callback=self.parse_weibos,
                           meta={'uid': uid, 'page': page})

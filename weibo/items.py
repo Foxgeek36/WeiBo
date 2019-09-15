@@ -9,7 +9,7 @@ from scrapy import Item, Field
 
 
 class UserItem(Item):
-    collection = 'users'
+    collection = 'users'  # 指明保存至mongodb中的Collection
     
     id = Field()
     name = Field()

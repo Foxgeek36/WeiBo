@@ -11,6 +11,9 @@ import requests
 
 
 class ProxyMiddleware():
+    '''
+    代理池对接
+    '''
     def __init__(self, proxy_url):
         self.logger = logging.getLogger(__name__)
         self.proxy_url = proxy_url
@@ -25,12 +28,12 @@ class ProxyMiddleware():
             return False
     
     def process_request(self, request, spider):
-        if request.meta.get('retry_times'):
+        if request.meta.get('retry_times'):  # retry_times come from where? +--
             proxy = self.get_random_proxy()
             if proxy:
                 uri = 'https://{proxy}'.format(proxy=proxy)
                 self.logger.debug('使用代理 ' + proxy)
-                request.meta['proxy'] = uri
+                request.meta['proxy'] = uri  # attention +--
 
     @classmethod
     def from_crawler(cls, crawler):
@@ -41,6 +44,9 @@ class ProxyMiddleware():
 
 
 class CookiesMiddleware():
+    '''
+    cookie池对接
+    '''
     def __init__(self, cookies_url):
         self.logger = logging.getLogger(__name__)
         self.cookies_url = cookies_url
@@ -58,7 +64,7 @@ class CookiesMiddleware():
         self.logger.debug('正在获取Cookies')
         cookies = self.get_random_cookies()
         if cookies:
-            request.cookies = cookies
+            request.cookies = cookies  # attention +--
             self.logger.debug('使用Cookies ' + json.dumps(cookies))
     
     @classmethod

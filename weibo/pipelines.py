@@ -5,14 +5,15 @@
 # Don't forget to add your pipeline to the ITEM_PIPELINES setting
 # See: http://doc.scrapy.org/en/latest/topics/item-pipeline.html
 import re, time
-
 import logging
 import pymongo
-
 from weibo.items import *
 
 
 class TimePipeline():
+    """
+    在spider中未对crawled_at做赋值/ 此处统一将其赋值为当前时间
+    """
     def process_item(self, item, spider):
         if isinstance(item, UserItem) or isinstance(item, WeiboItem):
             now = time.strftime('%Y-%m-%d %H:%M', time.localtime())
@@ -21,6 +22,9 @@ class TimePipeline():
 
 
 class WeiboPipeline():
+    """
+    数据清洗: 对时间格式做转换
+    """
     def parse_time(self, date):
         if re.match('刚刚', date):
             date = time.strftime('%Y-%m-%d %H:%M', time.localtime(time.time()))
@@ -43,11 +47,14 @@ class WeiboPipeline():
                 item['created_at'] = item['created_at'].strip()
                 item['created_at'] = self.parse_time(item.get('created_at'))
             if item.get('pictures'):
-                item['pictures'] = [pic.get('url') for pic in item.get('pictures')]
+                item['pictures'] = [pic.get('url') for pic in item.get('pictures')]  # list
         return item
 
 
 class MongoPipeline(object):
+    """
+    存储数据至mongodb
+    """
     def __init__(self, mongo_uri, mongo_db):
         self.mongo_uri = mongo_uri
         self.mongo_db = mongo_db
@@ -62,6 +69,7 @@ class MongoPipeline(object):
     def open_spider(self, spider):
         self.client = pymongo.MongoClient(self.mongo_uri)
         self.db = self.client[self.mongo_db]
+        # attention: 对两个Item-collection添加索引以提高检索效率
         self.db[UserItem.collection].create_index([('id', pymongo.ASCENDING)])
         self.db[WeiboItem.collection].create_index([('id', pymongo.ASCENDING)])
     
@@ -69,6 +77,9 @@ class MongoPipeline(object):
         self.client.close()
     
     def process_item(self, item, spider):
+        '''
+        使用update方法做存储/ 注意此处带'$'方法参数的使用
+        '''
         if isinstance(item, UserItem) or isinstance(item, WeiboItem):
             self.db[item.collection].update({'id': item.get('id')}, {'$set': item}, True)
         if isinstance(item, UserRelationItem):
